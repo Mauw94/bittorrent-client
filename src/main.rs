@@ -3,6 +3,8 @@ mod decoder;
 use std::{env, str::FromStr};
 
 use serde::{Deserialize, Serialize};
+use serde_bytes::ByteBuf;
+use sha1::{Digest, Sha1};
 
 #[derive(Debug)]
 enum Command {
@@ -32,6 +34,9 @@ struct Torrent {
 struct TorrentInfo {
     length: u32,
     name: String,
+    #[serde(rename = "piece length")]
+    piece_length: usize,
+    pieces: ByteBuf,
 }
 
 fn main() {
@@ -59,8 +64,19 @@ fn main() {
                     };
 
                     let torrent = serde_bencode::from_bytes::<Torrent>(&contents).unwrap();
+                    let bytes = serde_bencode::to_bytes(&torrent.info).unwrap();
+                    let hash = hex::encode(Sha1::digest(bytes));
+
+                    println!("Pieces {:?}", torrent.info.pieces);
                     println!("Tracker URL: {}", torrent.announce);
-                    println!("Lenght: {}", torrent.info.length);
+                    println!("Length: {}", torrent.info.length);
+                    println!("Info hash: {}", hash);
+                    println!("Piece Length: {}", torrent.info.piece_length);
+                    println!("Piece hashes:");
+                    for piece in torrent.info.pieces.chunks(20) {
+                        let hash = hex::encode(piece);
+                        println!("{hash}");
+                    }
                 }
             },
             Err(_) => println!("Invalid command"),
