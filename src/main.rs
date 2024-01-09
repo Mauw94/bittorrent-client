@@ -3,6 +3,7 @@ mod tracker;
 
 use std::{env, str::FromStr};
 
+use reqwest::Error;
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
 use sha1::{Digest, Sha1};
@@ -14,6 +15,7 @@ enum Command {
     Decode,
     Info,
     Peers,
+    Handshake,
 }
 
 impl FromStr for Command {
@@ -24,6 +26,7 @@ impl FromStr for Command {
             "decode" => Ok(Command::Decode),
             "info" => Ok(Command::Info),
             "peers" => Ok(Command::Peers),
+            "handshake" => Ok(Command::Handshake),
             _ => Err(()),
         }
     }
@@ -75,65 +78,16 @@ async fn main() -> anyhow::Result<()> {
                 }
                 // cargo run info sample.torrent
                 Command::Info => {
-                    let file_path = &args[2];
-                    let contents = match std::fs::read(file_path) {
-                        Ok(contents) => contents,
-                        Err(_) => {
-                            return Err(anyhow::Error::msg("File does not exist"));
-                        }
-                    };
-
-                    let torrent = serde_bencode::from_bytes::<Torrent>(&contents).unwrap();
-                    let bytes = serde_bencode::to_bytes(&torrent.info).unwrap();
-                    let hash = hex::encode(Sha1::digest(bytes));
-
-                    // println!("Pieces {:?}", torrent.info.pieces);
-                    println!("Tracker URL: {}", torrent.announce);
-                    println!("Length: {}", torrent.info.length);
-                    println!("Info hash: {}", hash);
-                    // println!("Piece Length: {}", torrent.info.piece_length);
-                    // println!("Piece hashes:");
-                    // for piece in torrent.info.pieces.chunks(20) {
-                    //     let hash = hex::encode(piece);
-                    //     println!("{hash}");
-                    // }
+                    let torrent = parse_torrent_content(&args[2]).unwrap();
+                    print_torrent_info(&torrent);
+                    return Ok(());
                 }
                 // cargo run peers sample.torrent
                 Command::Peers => {
-                    let file_path = &args[2];
-                    let contents = match std::fs::read(file_path) {
-                        Ok(contents) => contents,
-                        Err(_) => {
-                            return Err(anyhow::Error::msg("File does not exist"));
-                        }
-                    };
-
-                    let torrent = serde_bencode::from_bytes::<Torrent>(&contents).unwrap();
-                    let bytes = serde_bencode::to_bytes(&torrent.info).unwrap();
-                    // let hash = hex::encode(Sha1::digest(bytes));
-
-                    let mut hasher = Sha1::new();
-                    hasher.update(&bytes);
-                    let info_hash = hasher.finalize();
-
-                    println!("Tracker URL: {}", torrent.announce);
-                    // println!("Info hash: {}", info_hash);
-
-                    let request = TrackerRequest::new(torrent.info.length as usize);
-                    let url_params = serde_urlencoded::to_string(&request).unwrap();
-                    let tracker_url = format!(
-                        "{}?{}&info_hash={}",
-                        torrent.announce,
-                        url_params,
-                        urlencode(&info_hash.into())
-                    );
-
-                    let response = reqwest::get(tracker_url).await?.bytes().await?;
-                    let response: TrackerResponse = serde_bencode::from_bytes(&response).unwrap();
-                    for peer in response.peers.0 {
-                        println!("{}:{}", peer.ip(), peer.port());
-                    }
+                    let torrent = parse_torrent_content(&args[2]).unwrap();
+                    get_peers(&torrent).await?;
                 }
+                Command::Handshake => {}
             },
             Err(_) => {
                 println!("Invalid command");
@@ -143,6 +97,60 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("..");
     }
     Ok(())
+}
+
+fn parse_torrent_content(file_path: &String) -> Result<Torrent, anyhow::Error> {
+    let contents = match std::fs::read(file_path) {
+        Ok(contents) => contents,
+        Err(_) => {
+            return Err(anyhow::Error::msg("File does not exist"));
+        }
+    };
+
+    let torrent = serde_bencode::from_bytes::<Torrent>(&contents).unwrap();
+
+    Ok(torrent)
+}
+
+fn print_torrent_info(torrent: &Torrent) {
+    let bytes = serde_bencode::to_bytes(&torrent.info).unwrap();
+    let hash = hex::encode(Sha1::digest(bytes));
+
+    println!("Pieces {:?}", torrent.info.pieces);
+    println!("Tracker URL: {}", torrent.announce);
+    println!("Length: {}", torrent.info.length);
+    println!("Info hash: {}", hash);
+    println!("Piece Length: {}", torrent.info.piece_length);
+    println!("Piece hashes:");
+
+    for piece in torrent.info.pieces.chunks(20) {
+        let hash = hex::encode(piece);
+        println!("{hash}");
+    }
+}
+
+async fn get_peers(torrent: &Torrent) -> Result<(), Error> {
+    let bytes = serde_bencode::to_bytes(&torrent.info).unwrap();
+
+    let mut hasher = Sha1::new();
+    hasher.update(&bytes);
+    let info_hash = hasher.finalize();
+    let request = TrackerRequest::new(torrent.info.length as usize);
+    let url_params = serde_urlencoded::to_string(&request).unwrap();
+    let tracker_url = format!(
+        "{}?{}&info_hash={}",
+        torrent.announce,
+        url_params,
+        urlencode(&info_hash.into())
+    );
+
+    let response = reqwest::get(tracker_url).await?.bytes().await?;
+    let response: TrackerResponse = serde_bencode::from_bytes(&response).unwrap();
+    for peer in response.peers.0 {
+        println!("{}:{}", peer.ip(), peer.port());
+    }
+
+    return Ok(());
 }
 
 fn urlencode(t: &[u8; 20]) -> String {
