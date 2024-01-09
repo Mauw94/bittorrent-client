@@ -79,8 +79,7 @@ async fn main() -> anyhow::Result<()> {
                     let contents = match std::fs::read(file_path) {
                         Ok(contents) => contents,
                         Err(_) => {
-                            eprint!("File does not exist");
-                            return Ok(());
+                            return Err(anyhow::Error::msg("File does not exist"));
                         }
                     };
 
@@ -105,8 +104,7 @@ async fn main() -> anyhow::Result<()> {
                     let contents = match std::fs::read(file_path) {
                         Ok(contents) => contents,
                         Err(_) => {
-                            eprintln!("File does not exist");
-                            return Ok(());
+                            return Err(anyhow::Error::msg("File does not exist"));
                         }
                     };
 
