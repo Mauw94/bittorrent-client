@@ -50,7 +50,7 @@ impl Torrent {
         let mut hasher = <Sha1 as Digest>::new();
         hasher.update(bytes);
 
-        hasher.finalize().try_into().expect("GenericArray")
+        hasher.finalize().try_into().expect("array")
     }
 
     pub fn info_hash_url_encoded(&self) -> Result<String, anyhow::Error> {
@@ -82,9 +82,9 @@ impl Torrent {
         );
 
         let response = reqwest::get(endpoint).await?.bytes().await?;
-        let decoed: TrackerResponse = serde_bencode::from_bytes(&response)?;
+        let decoded: TrackerResponse = serde_bencode::from_bytes(&response)?;
 
-        Ok(decoed.all_peers())
+        Ok(decoded.all_peers())
     }
 
     pub async fn peer_handshake(&self, peer_addr: SocketAddrV4) -> anyhow::Result<String> {
@@ -125,6 +125,8 @@ impl Torrent {
 
         let mut buffer = [0u8; 68];
         stream.read_exact(&mut buffer)?;
+        
+        println!("{:?}", &buffer[48..]);
 
         Ok(hex::encode(&buffer[48..]))
     }

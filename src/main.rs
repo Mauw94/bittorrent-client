@@ -33,21 +33,19 @@ async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     match args.command {
-        // cargo run decode (something)
         Commands::Decode { encoded_bencode } => {
             let bencoded_value = decoder::BencodedValue::decode(&encoded_bencode);
             println!("Decoded value: {}", bencoded_value.value.to_string());
             return Ok(());
         }
-        // cargo run info sample.torrent
         Commands::Info { torrent } => {
             let torrent = Torrent::new(torrent)?;
+            println!("Name, {}", torrent.info.name);
             println!("Tracker URL: {}", torrent.announce);
             println!("Length: {}", torrent.info.length);
             println!("Info Hash: {}", torrent.info_hash_hex()?);
             println!("Piece Length: {}", torrent.info.piece_length);
         }
-        // cargo run peers sample.torrent
         Commands::Peers { torrent } => {
             let torrent = Torrent::new(torrent)?;
             let peers = torrent.discover_peers().await?;
