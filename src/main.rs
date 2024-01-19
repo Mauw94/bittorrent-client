@@ -1,8 +1,9 @@
 mod decoder;
+mod peer;
 mod torrent;
 mod tracker;
 use clap::{Parser, Subcommand};
-use std::{net::SocketAddrV4, path::PathBuf};
+use std::{fs, net::SocketAddrV4, path::PathBuf};
 use torrent::Torrent;
 
 #[derive(Parser, Debug)]
@@ -12,6 +13,7 @@ struct Args {
 }
 
 #[derive(Subcommand, Debug)]
+#[clap(rename_all = "snake_case")]
 enum Commands {
     Decode {
         encoded_bencode: String,
@@ -25,6 +27,14 @@ enum Commands {
     Handshake {
         torrent: PathBuf,
         peer_addr: SocketAddrV4,
+    },
+    DownloadPiece {
+        output_path: PathBuf,
+        torrent: PathBuf,
+        piece: u32,
+    },
+    TestOutput {
+        output_path: PathBuf,
     },
 }
 
@@ -57,6 +67,18 @@ async fn main() -> anyhow::Result<()> {
             let torrent = Torrent::new(torrent)?;
             let peer_id = torrent.peer_handshake(peer_addr).await?;
             println!("Peer ID: {}", peer_id);
+        }
+        Commands::DownloadPiece {
+            output_path,
+            torrent,
+            piece,
+        } => {
+            let torrent = Torrent::new(torrent)?;
+            let data = torrent.download_piece(piece).await?;
+            fs::write(output_path, data).unwrap();
+        }
+        Commands::TestOutput { output_path } => {
+            fs::write(output_path, String::from("this is a test")).unwrap();
         }
     }
     Ok(())
